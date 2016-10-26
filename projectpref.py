@@ -3,12 +3,26 @@
 import numpy as np
 
 class Modulo3Incrementer:
+    x = 0
+
     def __init__(self, x):
         self.x = x
+
     def __add__(self, a):
-        return (self.x + a) % 3
-    def __dir__(self, a):
-        return (self.x + 333 - a) % 3
+        return int((self.x + a) % 3)
+
+    def __sub__(self, a):
+        return int((self.x + 333 - a) % 3)
+
+    def __iadd__(self, other):
+        self.x = (self.x + other) % 3
+        return self.x
+
+    def __isub__(self, other):
+        self.x = (self.x + 333 - other) % 3
+
+    def __int__(self):
+        return self.x
 
 class Card:
     @classmethod
@@ -51,13 +65,15 @@ class Card:
             suit = '♥'
         return val + suit
 
-
 class Hand:
     def __init__(self, hand):
-        self.deck = map(lambda x: Card(x), hand)
+        self.deck = list(map(lambda x: Card(x), hand))
 
     def __str__(self):
         return ' '.join(map(str, sorted(self.deck)))
+
+    def __getitem__(self, key):
+        return self.deck[key]
 
 
 class Player:
@@ -82,8 +98,26 @@ class Player:
     def __str__(self):
         return 'name=' + str(self.name) + ' id=' + str(self.id) + ' deck:' + str(self.deck)
 
-    def GetDeccisionOnBarg(self, leftDeccision, rightDeccision, sheduleFreeList):
-        return sheduleFreeList[0]
+    def GetBarg(self, shedule, leftDeccision, rightDeccision):
+        xx = shedule.GetFreeList()
+        # print(''.join(xx[0]))
+        if any(xx):
+            return ("Game", xx[0])
+        else:
+            return "Pass"
+
+    def Get(self, id):
+        card = self.deck[id]
+        self.deck = self.deck[:id] + self.deck[id+1:]
+        return card
+
+    # self.table, playerleft.get_hand(), playerright.get_hand()
+    def get_card(self, table, lefthand, righthand):
+        return self.Get(0)
+
+    def get_hand(self):
+        return self.deck
+
 
 
 
@@ -111,41 +145,64 @@ class AnswerType: # данный класс - это ответ игрока п�
         def Game():
             return "Game"
 
-    def __init__(self, typeOfAction, card=(-1, -1)): #define ПАС/ ВИСТ
-        if typeOfAction == AnswerType.Action.Mizer:
+    def __init__(self, typeOfAction): #define ПАС/ ВИСТ
+        if typeOfAction == AnswerType.Action.Mizer():
             self.isMizer = True
-        elif typeOfAction == AnswerType.Action.Game:
+        elif type(typeOfAction) is tuple:
             self.isPlay = True
-            self.PlayChoose = card
-        elif typeOfAction == AnswerType.Action.Vist:
+            self.PlayChoose = typeOfAction[1]
+        elif typeOfAction == AnswerType.Action.Vist():
             self.isVist = True
-        elif typeOfAction == AnswerType.Action.Pass:
+        elif typeOfAction == AnswerType.Action.Pass():
             self.isPass = True
 
+    def Tostr(self, y):
+        x = AnswerType(y)
+        if x.isPlay:
+            return y[1][0] + y[1][1]
+        else:
+            return y
 
 # class Rate(Card):
 
 
 class Shedule:
     def __init__(self):
-        masks = ['7', '8', '9', '10']
-        masks1 = ['♠', '♣', '♦', '♥', 'БК']
-        self.alls = [(i, j) for i in masks for j in masks1]
+        self.masks = ['6', '7', '8', '9', '10']
+        self.masks1 = ['♠', '♣', '♦', '♥', 'БК']
+        self.alls = [(i, j) for i in self.masks for j in self.masks1]
         self.used = {i: False for i in self.alls}
+
+
+    def GetIdMask1(self, c):
+        for i in enumerate(self.masks1):
+            if i[1] == c:
+                return i[0]
+        return False
+
+    @staticmethod
+    def cmp(a, b):
+        x1 = Shedule.GetIdMask1(Shedule(), a[1])
+        x2 = Shedule.GetIdMask1(Shedule(), b[1])
+        return int(a[0]) * 100 + x1 - int(b[0]) * 100 - x2
 
     def SetUsed(self, cnt, typeX):
         card = (cnt, typeX)
-        for i in range(len(self.alls)):
-            if self.alls[i] == card:
-                print("YES")
+        ans = list(filter(lambda x: self.used[x] == False, self.used.keys()))
+        ans = list(sorted(ans, cmp=self.cmp))
+        for i in range(len(ans)):
+            if ans[i] == card:
                 for j in range(i + 1):
-                    self.used[self.alls[j]] = True
+                    self.used[ans[j]] = True
 
     def IsUsed(self, cnt, typeX):
         return self.used[(cnt, typeX)]
 
     def GetFreeList(self):
-        return list(filter(lambda x: self.used[x] == False, self.used.keys()))
+        ans = list(filter(lambda x: self.used[x] == False, self.used.keys()))
+        ans = list(sorted(ans, cmp=self.cmp))
+        # print(' '.join(map(lambda x: str(x[0])+str(x[1]), ans)))
+        return ans
 
     def __str__(self):
         return "Locked: " + ' '.join(map(str, filter(lambda x: self.used[x] == True, self.used.keys())))
@@ -159,7 +216,7 @@ class Round:
     manager_id = -1
     allCards = np.arange(32)  # crea
 
-    def MakeOneCircle(self, manager_id, players, trump):
+    def MakeOneCircle(self, manager_id, players, trump='♠', amount_cnt=6):
         tripleset = []
         for manager in range(3):
             id_man = (manager + manager_id) % 3
@@ -191,25 +248,44 @@ class Round:
         freeList = shedule.GetFreeList()
         answers = [-1, -1, -1]
         # первый круг голосов - возможны распасы
+        for i in range(3):
+            ans = players[(manager_id + 0) % 3].GetBarg(shedule, answers[(manager_id + 3 - 1) % 3], answers[(manager_id + 1) % 3])
+            answers[(manager_id + 0) % 3] = ans
+            if AnswerType(ans).isPlay:
+                shedule.SetUsed(ans[1][0], ans[1][1])
+            elif AnswerType(ans).isMiser:
+                shedule.SetUsed('8', 'БК')
+            manager_id += 1
+        # print(' '.join(map(lambda x: str(x[0])+str(x[1]), answers)))
+        # первый круг голосов пройден
+        while True: # пока есть свободные ячейки в таблице
+            if len(list(filter(lambda x: AnswerType(x).isPass is True, answers))) == 2: # если хотя бы два не играют
+                break
 
-
-        while any(shedule.GetFreeList()): # пока есть свободные ячейки в таблице
-            if all(filter(lambda x: isinstance(x, AnswerType) == True, answers)):
-                if len(list(filter(lambda x: x.isPass == True, answers))) == 2: # если хотя бы два не играют
-                    break
-
+            ans = players[(manager_id + 0) % 3].GetBarg(shedule, answers[(manager_id + 3 - 1) % 3],
+                                                        answers[(manager_id + 1) % 3])
+            answers[(manager_id + 0) % 3] = ans
+            print(ans)
+            if AnswerType(ans).isPlay:
+                shedule.SetUsed(ans[1][0], ans[1][1])
+            elif AnswerType(ans).isMiser:
+                shedule.SetUsed('8', 'БК')
             manager_id += 1 # modulo 3
-            player
 
+        return answers
 
 
     def __str__(self):
-        return 'Player {0}: {1}, \nPlayer {2}: {3}, \nPlayer {4}: {5}, TALON: {6}'.format(self.players[0].name,
-                                                                                          self.players[0].deck,
+        return 'Player {0}: {1}, \nPlayer {2}: {3}, \nPlayer {4}: {5}, TALON: {6}\n'.format(self.players[0].name,
+                                                                                          ' '.join(map(str, self.players[0].deck)),
                                                                                           self.players[1].name,
-                                                                                          self.players[1].deck,
+                                                                                          ' '.join(map(str,
+                                                                                                       self.players[
+                                                                                                           1].deck)),
                                                                                           self.players[2].name,
-                                                                                          self.players[2].deck,
+                                                                                          ' '.join(map(str,
+                                                                                                       self.players[
+                                                                                                           2].deck)),
                                                                                           self.talon)
 
 
@@ -222,13 +298,27 @@ class Game:
         self.players.append(Player(name2, 1))
         self.players.append(Player(name3, 2))
         self.manager = 0
+        r = Round(self.players, self.manager)
+        self.answers = r.MakeBargs(self.players, self.manager)
+        print(self.answers)
+        print(' '.join(map(lambda x: AnswerType(x).Tostr(x), self.answers)))
+        notPass = ()
+        for i in self.answers:
+            if not AnswerType(i).isPass:
+                notPass = i
+        if notPass == '':
+            print("RASPASI!!!)!)!)!)!)!)!))!)!)!)!)!)!)!)!)")
+        elif AnswerType(notPass).isMiser:
+            print("MIZER TIMEEEOJOJOSNDVOJDNVIOJSNFOEJFNEOJN")
+        else:
+            while any(self.players[0].deck):
+                self.manager = r.MakeOneCircle(self.manager, self.players, notPass[1][1], int(notPass[1][0]))
+                print(r)
+
         #while any(filter(lambda x: x.bullet < self.maxBullet, self.players)):
         #    r = Round(self.players, self.manager)
         #    print(r)
         #    print
 
 
-d = Shedule()
-print(d)
-d.SetUsed('8', '♠')
-print(d)
+g = Game()
