@@ -17,4 +17,32 @@ if a > b:
     b = t
 print (a)
 
+
+
+
+#  количество совпадающих из 3-х
+
+a = int(input())
+b = int(input())
+c = int(input())
+if a > b:
+    t = a 
+    a = b 
+    b = t
+if b > c:
+    t = b
+    b = c 
+    c = t
+if a > b:
+    t = a 
+    a = b 
+    b = t
+    
+if a == b == c:
+    print(3)
+elif b == c or a == b:
+    print(2)
+else:
+    print(0)
+
     
